@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MedSecure — Biometric Cloud System</title>
+<link rel="stylesheet" href="css/style.css">
+
+<!-- face-api.js (real TensorFlow.js face recognition) -->
+<script defer src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js"></script>
+</head>
+<body>
+
+<!-- MODEL LOADING OVERLAY -->
+<div id="modelOverlay" style="display:none">
+  <div class="model-spinner"></div>
+  <div class="model-title">Loading Face Recognition Models</div>
+  <div class="model-progress"><div class="model-progress-fill" id="modelProgressFill"></div></div>
+  <div class="model-sub" id="modelSub">Initializing face-api.js...</div>
+  <div style="font-size:0.72rem;color:var(--text3);font-family:'DM Mono',monospace;margin-top:0.5rem">
+    SSD MobileNet + 68-pt Landmarks + FaceNet (128-d)
+  </div>
+</div>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">⚕</div>
+    Med<span>Secure</span>
+  </div>
+  <nav>
+    <button class="active" data-page="dashboard" onclick="showPage('dashboard',this)">Dashboard</button>
+    <button data-page="auth" onclick="showPage('auth',this)">Biometric Auth</button>
+    <button data-page="storage" onclick="showPage('storage',this)">File Storage</button>
+    <button data-page="users" onclick="showPage('users',this)">Users</button>
+  </nav>
+  <div class="status-pill">
+    <div class="status-dot"></div>
+    <span id="systemStatus">System Online</span>
+  </div>
+</header>
+
+<main>
+
+<!-- ==================== DASHBOARD ==================== -->
+<div id="page-dashboard" class="page active scroll-area">
+  <div class="dashboard">
+    <div class="page-title">Security Dashboard</div>
+    <div class="page-subtitle">// Medical data protection overview — Group 13 | Cloud Computing</div>
+
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-label">Registered Users</div>
+        <div class="stat-value" id="statUsers">0</div>
+        <div class="stat-sub">biometric enrolled</div>
+        <div class="stat-icon">👤</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Files Stored</div>
+        <div class="stat-value" id="statFiles">0</div>
+        <div class="stat-sub">encrypted &amp; fragmented</div>
+        <div class="stat-icon">🗂</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Total Fragments</div>
+        <div class="stat-value" id="statFrags">0</div>
+        <div class="stat-sub">across StoreA / B / C</div>
+        <div class="stat-icon">⬡</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Auth Sessions</div>
+        <div class="stat-value" id="statSessions">0</div>
+        <div class="stat-sub">successful total</div>
+        <div class="stat-icon">🔐</div>
+      </div>
+    </div>
+
+    <div class="main-grid">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Activity Log</div>
+          <div class="chip" style="background:rgba(0,212,255,0.1);color:var(--accent)">Live</div>
+        </div>
+        <div class="card-body" id="activityLog">
+          <div class="log-entry">
+            <span class="log-time">--:--</span>
+            <span class="log-type warn">INIT</span>
+            <span class="log-msg">System initializing...</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Biometric Performance</div>
+        </div>
+        <div class="card-body">
+          <div class="metrics-row">
+            <div class="metric-label">FAR</div>
+            <div class="metric-bar-wrap"><div class="metric-bar" style="width:3%;background:var(--danger)"></div></div>
+            <div class="metric-val">0.03%</div>
+          </div>
+          <div class="metrics-row">
+            <div class="metric-label">FRR</div>
+            <div class="metric-bar-wrap"><div class="metric-bar" style="width:5%;background:var(--warn)"></div></div>
+            <div class="metric-val">0.05%</div>
+          </div>
+          <div class="metrics-row">
+            <div class="metric-label">EER</div>
+            <div class="metric-bar-wrap"><div class="metric-bar" style="width:4%;background:var(--accent)"></div></div>
+            <div class="metric-val">0.04%</div>
+          </div>
+          <div class="metrics-row">
+            <div class="metric-label">Accuracy</div>
+            <div class="metric-bar-wrap"><div class="metric-bar" style="width:96%;background:var(--accent3)"></div></div>
+            <div class="metric-val">96.2%</div>
+          </div>
+          <div style="margin-top:1.2rem;padding-top:1rem;border-top:1px solid var(--border)">
+            <div class="frag-demo-title">Fragment Store Distribution</div>
+            <div class="frag-grid" id="dashFragGrid"></div>
+            <div style="display:flex;gap:1rem;margin-top:0.7rem;font-size:0.68rem;font-family:'DM Mono',monospace;color:var(--text3)">
+              <span><span style="color:#00d4ff">■</span> StoreA</span>
+              <span><span style="color:#7b5ea7">■</span> StoreB</span>
+              <span><span style="color:#00ff9d">■</span> StoreC</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Architecture Info -->
+    <div style="margin-top:1.5rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.5rem">
+      <div class="frag-demo-title">System Architecture</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;font-size:0.78rem;">
+        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:1rem">
+          <div style="color:var(--accent);font-weight:700;margin-bottom:0.5rem;font-family:'DM Mono',monospace;font-size:0.72rem">FACE RECOGNITION</div>
+          <div style="color:var(--text2);line-height:1.7;font-family:'DM Mono',monospace;font-size:0.72rem">
+            SSD MobileNet (detect)<br>
+            68-pt Landmark Model<br>
+            FaceNet 128-d descriptor<br>
+            Euclidean distance match<br>
+            Threshold: 0.55
+          </div>
+        </div>
+        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:1rem">
+          <div style="color:var(--accent3);font-weight:700;margin-bottom:0.5rem;font-family:'DM Mono',monospace;font-size:0.72rem">FILE FRAGMENTATION</div>
+          <div style="color:var(--text2);line-height:1.7;font-family:'DM Mono',monospace;font-size:0.72rem">
+            RPF: Random Pattern<br>
+            8 chunks per file<br>
+            Fisher-Yates shuffle<br>
+            Distributed: 3 stores<br>
+            localStorage (Base64)
+          </div>
+        </div>
+        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:1rem">
+          <div style="color:var(--warn);font-weight:700;margin-bottom:0.5rem;font-family:'DM Mono',monospace;font-size:0.72rem">PERSISTENCE</div>
+          <div style="color:var(--text2);line-height:1.7;font-family:'DM Mono',monospace;font-size:0.72rem">
+            medsecure_users (JSON)<br>
+            medsecure_files (meta)<br>
+            StoreA/B/C_{id}_{i}<br>
+            Sessions counter<br>
+            Survives page refresh
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== BIOMETRIC AUTH ==================== -->
+<div id="page-auth" class="page scroll-area">
+  <div class="auth-page">
+    <div class="page-title">Biometric Authentication</div>
+    <div class="page-subtitle">// Real face recognition (face-api.js) + simulated fingerprint (ORB)</div>
+
+    <div class="tabs">
+      <button class="tab active" onclick="switchAuthTab('login',this)">Login</button>
+      <button class="tab" onclick="switchAuthTab('register',this)">Register New User</button>
+    </div>
+
+    <!-- ---- LOGIN TAB ---- -->
+    <div id="authTabLogin">
+      <div class="face-container">
+        <div class="video-panel">
+          <div class="video-header">
+            <div class="card-title">Face Scanner</div>
+            <div id="loginCamStatus" class="chip" style="background:rgba(255,165,2,0.1);color:var(--warn)">● Inactive</div>
+          </div>
+          <div class="video-wrapper">
+            <video id="loginVideo" autoplay muted playsinline></video>
+            <canvas id="loginCanvas" class="overlay-canvas"></canvas>
+            <div class="video-overlay">
+              <div class="corner tl"></div>
+              <div class="corner tr"></div>
+              <div class="corner bl"></div>
+              <div class="corner br"></div>
+              <div class="scan-line" id="loginScanLine"></div>
+            </div>
+            <div class="face-status" id="loginFaceStatus">Click "Start Camera" to begin</div>
+          </div>
+          <div class="video-controls">
+            <button class="btn btn-primary" id="btnStartLogin" onclick="startLoginCamera()">▶ Start Camera</button>
+            <button class="btn btn-secondary" id="btnCapture" onclick="captureAndAuth()" disabled>📸 Capture &amp; Verify</button>
+            <button class="btn btn-danger" id="btnStopLogin" onclick="stopLoginCamera()" style="display:none">■ Stop</button>
+          </div>
+        </div>
+
+        <div class="auth-panel">
+          <div class="video-header">
+            <div class="card-title">Verification Steps</div>
+            <div id="authResultBadge" class="chip" style="background:rgba(42,48,69,0.5);color:var(--text3)">Pending</div>
+          </div>
+          <div class="auth-steps">
+            <div class="auth-step" id="step1">
+              <div class="step-num">1</div>
+              <div class="step-info">
+                <div class="step-title">Camera Initialization</div>
+                <div class="step-desc">Accessing webcam device</div>
+              </div>
+            </div>
+            <div class="auth-step" id="step2">
+              <div class="step-num">2</div>
+              <div class="step-info">
+                <div class="step-title">Face Detection — SSD MobileNet</div>
+                <div class="step-desc">Real-time face bounding box</div>
+                <div class="confidence-bar"><div class="confidence-fill" id="conf2"></div></div>
+              </div>
+            </div>
+            <div class="auth-step" id="step3">
+              <div class="step-num">3</div>
+              <div class="step-info">
+                <div class="step-title">Feature Extraction — FaceNet</div>
+                <div class="step-desc">128-dimensional face embedding</div>
+                <div class="confidence-bar"><div class="confidence-fill" id="conf3"></div></div>
+              </div>
+            </div>
+            <div class="auth-step" id="step4">
+              <div class="step-num">4</div>
+              <div class="step-info">
+                <div class="step-title">Fingerprint — ORB Simulation</div>
+                <div class="step-desc">Hamming distance keypoint match</div>
+                <div class="confidence-bar"><div class="confidence-fill" id="conf4"></div></div>
+              </div>
+            </div>
+            <div class="auth-step" id="step5">
+              <div class="step-num">5</div>
+              <div class="step-info">
+                <div class="step-title">Score-Level Fusion</div>
+                <div class="step-desc">Face 65% + Fingerprint 35%</div>
+                <div class="confidence-bar"><div class="confidence-fill" id="conf5"></div></div>
+              </div>
+            </div>
+            <div class="auth-step" id="step6">
+              <div class="step-num">6</div>
+              <div class="step-info">
+                <div class="step-title">Identity Decision</div>
+                <div class="step-desc" id="authUserLabel">Awaiting authentication</div>
+              </div>
+            </div>
+          </div>
+          <div style="padding:1rem 1.5rem;border-top:1px solid var(--border)">
+            <div id="authMessage" style="margin-bottom:0.8rem"></div>
+            <div style="display:flex;gap:0.5rem">
+              <button class="btn btn-secondary" style="flex:1" onclick="resetAuth()">↺ Reset</button>
+              <button class="btn btn-success" id="btnAccessFiles" style="flex:1;display:none"
+                onclick="showPage('storage',document.querySelector('[data-page=storage]'))">📁 Access Files</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ---- REGISTER TAB ---- -->
+    <div id="authTabRegister" style="display:none">
+      <div class="face-container">
+        <div class="video-panel">
+          <div class="video-header">
+            <div class="card-title">Face Capture</div>
+            <div id="regCamStatus" class="chip" style="background:rgba(255,165,2,0.1);color:var(--warn)">● Inactive</div>
+          </div>
+          <div class="video-wrapper">
+            <video id="regVideo" autoplay muted playsinline></video>
+            <canvas id="regCanvas" class="overlay-canvas"></canvas>
+            <div class="video-overlay">
+              <div class="corner tl"></div>
+              <div class="corner tr"></div>
+              <div class="corner bl"></div>
+              <div class="corner br"></div>
+              <div class="scan-line" id="regScanLine"></div>
+            </div>
+            <div class="face-status" id="regFaceStatus">Start camera to capture your face</div>
+          </div>
+          <div class="video-controls">
+            <button class="btn btn-primary" id="btnRegStartCam" onclick="startRegCamera()">▶ Start Camera</button>
+            <button class="btn btn-secondary" id="btnRegCapture" onclick="captureRegFace()" disabled>📸 Capture Face</button>
+            <button class="btn btn-danger" id="btnRegStop" onclick="stopRegCamera()" style="display:none">■ Stop</button>
+          </div>
+        </div>
+
+        <div class="auth-panel">
+          <div class="video-header">
+            <div class="card-title">User Registration</div>
+          </div>
+          <div style="padding:1.5rem;flex:1">
+            <div style="background:rgba(0,212,255,0.05);border:1px solid rgba(0,212,255,0.2);border-radius:8px;padding:0.8rem;margin-bottom:1rem;font-size:0.75rem;font-family:'DM Mono',monospace;color:var(--text2)">
+              ℹ Real face descriptor (128-d FaceNet embedding) stored in localStorage. Works across sessions.
+            </div>
+            <div class="form-group">
+              <label class="form-label">Full Name</label>
+              <input class="form-input" id="regName" placeholder="Dr. Jane Smith" type="text">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Role</label>
+              <select class="form-input" id="regRole">
+                <option>Doctor</option>
+                <option>Nurse</option>
+                <option>Admin</option>
+                <option>Patient</option>
+                <option>Technician</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Face Template (FaceNet 128-d)</label>
+              <div id="faceCaptureStatus"
+                   style="padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:8px;font-size:0.78rem;font-family:'DM Mono',monospace;color:var(--text3)">
+                No face captured yet
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Fingerprint (ORB Simulated)</label>
+              <div class="fp-area" id="fpArea" onclick="simulateFingerprint()">
+                <div class="fp-icon" id="fpIcon">🖐</div>
+                <div style="font-size:0.8rem;color:var(--text2)" id="fpText">Click to simulate fingerprint scan</div>
+              </div>
+            </div>
+          </div>
+          <div style="padding:1rem 1.5rem;border-top:1px solid var(--border)">
+            <button class="btn btn-primary" style="width:100%" onclick="registerUser()">
+              Register User
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== FILE STORAGE ==================== -->
+<div id="page-storage" class="page scroll-area">
+  <div class="storage-page">
+    <div class="page-title">Encrypted File Storage</div>
+    <div class="page-subtitle">// Random Pattern Fragmentation (RPF) — 8 chunks → 3 localStorage stores</div>
+
+    <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()"
+         ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event)">
+      <div class="upload-icon">📂</div>
+      <div class="upload-title">Drop medical files here</div>
+      <div class="upload-sub">PDF · DICOM · JPEG · PNG · TXT — fragments stored in StoreA / StoreB / StoreC (localStorage)</div>
+      <input type="file" id="fileInput" style="display:none" multiple onchange="handleFiles(this.files)">
+    </div>
+
+    <!-- Storage info bar -->
+    <div class="storage-info" id="storageInfo">
+      <div class="storage-stat"><span>Files</span><span>0</span></div>
+      <div class="storage-stat"><span>Total Size</span><span>0 B</span></div>
+      <div class="storage-stat"><span>Fragments</span><span>0</span></div>
+      <div class="storage-stat"><span>LocalStorage Used</span><span>0 B</span></div>
+      <div class="storage-stat"><span>Stores Active</span><span>—</span></div>
+    </div>
+
+    <!-- RPF Demo -->
+    <div class="frag-demo">
+      <div class="frag-demo-title">RPF Process — How files are protected</div>
+      <div class="frag-stages">
+        <div class="frag-stage">
+          <div class="frag-stage-title">Original File</div>
+          <div class="frag-visual" id="origVisual">
+            <div style="font-size:0.72rem;color:var(--text3);font-family:'DM Mono',monospace">Upload a file</div>
+          </div>
+          <div style="font-size:0.65rem;color:var(--text3);margin-top:6px;font-family:'DM Mono',monospace" id="origLabel">—</div>
+        </div>
+        <div class="arrow-indicator">→</div>
+        <div class="frag-stage">
+          <div class="frag-stage-title">Shuffled (8 chunks)</div>
+          <div class="frag-visual" id="fragVisual">
+            <div style="font-size:0.72rem;color:var(--text3);font-family:'DM Mono',monospace">Fisher-Yates shuffle</div>
+          </div>
+          <div style="font-size:0.65rem;color:var(--text3);margin-top:6px;font-family:'DM Mono',monospace">Random permutation applied</div>
+        </div>
+        <div class="arrow-indicator">→</div>
+        <div class="frag-stage">
+          <div class="frag-stage-title">Distributed Stores</div>
+          <div class="frag-visual" id="distVisual">
+            <div style="font-size:0.72rem;color:var(--text3);font-family:'DM Mono',monospace">A / B / C</div>
+          </div>
+          <div style="font-size:0.65rem;color:var(--text3);margin-top:6px;font-family:'DM Mono',monospace">StoreA / StoreB / StoreC</div>
+        </div>
+      </div>
+      <div style="font-size:0.75rem;color:var(--text3);font-family:'DM Mono',monospace;text-align:center">
+        🔒 No single store holds complete data — pattern key required for reassembly
+      </div>
+    </div>
+
+    <div class="frag-demo-title" style="margin-bottom:1rem">Stored Files</div>
+    <div id="filesList">
+      <div class="empty-state">
+        <div class="empty-icon">📭</div>
+        <div class="empty-text">No files stored yet. Upload a file to get started.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== USERS ==================== -->
+<div id="page-users" class="page scroll-area">
+  <div class="storage-page">
+    <div class="page-title">Registered Users</div>
+    <div class="page-subtitle">// Biometric-enrolled profiles — face descriptors in localStorage</div>
+    <div style="display:flex;gap:1rem;margin-bottom:1.5rem;align-items:center;flex-wrap:wrap">
+      <button class="btn btn-primary"
+        onclick="showPage('auth',document.querySelector('[data-page=auth]'));setTimeout(()=>switchAuthTab('register',document.querySelectorAll('.tab')[1]),100)">
+        + Register New User
+      </button>
+      <button class="btn btn-danger" onclick="clearAllUsers()" style="font-size:0.75rem;padding:8px 14px">
+        🗑 Clear All Users
+      </button>
+      <span style="font-size:0.75rem;color:var(--text3);font-family:'DM Mono',monospace">
+        Users persist across sessions via localStorage
+      </span>
+    </div>
+    <div class="users-grid" id="usersGrid">
+      <div class="empty-state" style="grid-column:1/-1">
+        <div class="empty-icon">👥</div>
+        <div class="empty-text">No users registered.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</main>
+
+<div id="toast-container"></div>
+
+<!-- Load scripts in dependency order -->
+<script src="js/ui.js"></script>
+<script src="js/storage.js"></script>
+<script src="js/faceAuth.js"></script>
+<script src="js/app.js"></script>
+
+<script>
+// Extra helpers that need DOM + all scripts loaded
+window.clearAllUsers = function() {
+  if (!confirm('Delete all registered users? This cannot be undone.')) return;
+  STATE.users = [];
+  persistUsers();
+  renderUsers();
+  updateDashboard();
+  toast('All users cleared', 'warn');
+  addLog('All user biometric profiles deleted', 'warn');
+};
+</script>
+
+</body>
+</html>
