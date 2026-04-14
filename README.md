@@ -1,57 +1,108 @@
-# MedSecure — Biometric Cloud System
+# MedSecure v2 — Biometric Cloud System
 ### Group 13 — Cloud Computing Project
 
 ## Project Structure
 
 ```
 MedSecure/
-├── index.html              # Main entry point
-├── README.md               # This file
+├── index.html                  # Main entry point (open in browser)
+├── README.md
 ├── css/
-│   └── style.css           # All styles
+│   └── style.css               # All styles
 ├── js/
-│   ├── app.js              # App init, navigation, state
-│   ├── faceAuth.js         # Real face recognition (face-api.js)
-│   ├── storage.js          # RPF fragmentation + localStorage persistence
-│   └── ui.js               # Toast, log, dashboard, render helpers
-├── data/
-│   └── .gitkeep            # face-api.js model weights go here (auto-downloaded)
-└── assets/
-    └── .gitkeep            # Static assets
+│   ├── permissions.js          # RBAC — role definitions + permission checks
+│   ├── ui.js                   # Toast, log, dashboard, render helpers
+│   ├── storage.js              # RPF fragmentation + AWS S3 / localStorage
+│   ├── faceAuth.js             # Real face recognition + WebAuthn fingerprint
+│   └── app.js                  # Global state, navigation, init
+├── data/                       # face-api.js model weights (loaded from CDN)
+└── assets/                     # Static assets
 ```
 
-## How Face Recognition Works
+---
 
-Uses **face-api.js** (TensorFlow.js) for real in-browser face recognition:
-1. **SSD MobileNet** — detects face bounding box
-2. **68-point Landmark Model** — maps facial landmarks
-3. **FaceNet (128-d descriptor)** — generates face embedding vector
-4. **Euclidean distance** comparison against stored descriptors
+## New Features (v2)
 
-Face descriptors are stored in `localStorage` under key `medsecure_users`.
+### 1. Real Hardware Fingerprint (WebAuthn)
+Your laptop fingerprint sensor works via the **WebAuthn W3C standard**:
+- Click **"Hardware Sensor"** during registration
+- Your OS prompts for fingerprint / Windows Hello / Touch ID
+- A **cryptographic credential** is stored in the secure enclave (not the image)
+- During login, the sensor verifies automatically
 
-## How File Storage Works (RPF)
+**Note**: Browser cannot access fingerprint image pixels — WebAuthn gives a
+cryptographic proof instead. This is actually more secure than ORB matching.
 
-Random Pattern Fragmentation splits files into 8 chunks, shuffles them,
-then stores each chunk in a different "store" in localStorage:
-- `StoreA_*` — fragments 0, 3, 6
-- `StoreB_*` — fragments 1, 4, 7
-- `StoreC_*` — fragments 2, 5
+- If no sensor / sensor fails → falls back to **ORB simulation** automatically
 
-Reassembly requires knowing the pattern (also stored in metadata).
+### 2. Role-Based Access Control (RBAC)
+
+| Role       | Register | Upload | View Files | Delete | AWS Config |
+|------------|----------|--------|------------|--------|------------|
+| Admin      | ✓        | ✓      | All        | Any    | ✓          |
+| Doctor     | ✗        | ✓      | All        | Own    | ✗          |
+| Nurse      | ✗        | ✓      | All        | ✗      | ✗          |
+| Technician | ✗        | ✓      | All        | ✗      | ✗          |
+| Patient    | ✗        | ✗      | Shared only| ✗      | ✗          |
+
+- Doctors/Admins can **share files** with specific patients
+- Admin can **delete any user** from Users page
+- UI adapts after login (upload zone hidden for patients, etc.)
+
+### 3. AWS S3 Integration (Real Cloud)
+Files → Storage → Configure AWS S3:
+1. Create S3 bucket
+2. Add CORS policy (see in-app instructions)
+3. Create IAM user with S3 permissions
+4. Enter region + bucket + credentials in app
+5. All future uploads go to S3 (8 fragments × 3 store prefixes)
+
+**S3 key structure:**
+```
+medsecure/StoreA/{fileId}/0
+medsecure/StoreB/{fileId}/1
+medsecure/StoreC/{fileId}/2
+...
+```
+
+Uses **AWS Signature v4** generated in-browser — no backend server needed.
+
+### 4. Audit Trail
+All events (login, register, upload, delete, share) are logged with timestamp
+and username. Persists in localStorage. Viewable in the Audit tab.
+
+---
 
 ## localStorage Keys
 
 | Key | Contents |
 |-----|----------|
-| `medsecure_users` | JSON array of user profiles + face descriptors |
-| `medsecure_files` | JSON array of file metadata (no actual binary data) |
+| `medsecure_users` | User profiles + Float32Array face descriptors |
+| `medsecure_files` | File metadata (no binary) |
 | `medsecure_sessions` | Auth session count |
-| `StoreA_{fileId}_{fragIdx}` | Base64-encoded fragment data |
-| `StoreB_{fileId}_{fragIdx}` | Base64-encoded fragment data |
-| `StoreC_{fileId}_{fragIdx}` | Base64-encoded fragment data |
+| `medsecure_audit` | Audit event log |
+| `medsecure_aws_config` | AWS credentials |
+| `StoreA_{fileId}_{i}` | Base64 fragment (local mode) |
+| `StoreB_{fileId}_{i}` | Base64 fragment (local mode) |
+| `StoreC_{fileId}_{i}` | Base64 fragment (local mode) |
 
-## Running
+---
 
-Just open `index.html` in a browser. No server needed.
-face-api.js models are loaded from CDN automatically.
+## How to Run
+1. Open `index.html` in Chrome/Firefox/Edge
+2. Wait ~10s for face recognition models to load from CDN
+3. Register a user (Admin first, then others)
+4. Log in with face recognition
+5. Upload and retrieve files
+
+## Recommendation: localStorage vs AWS S3
+
+| | localStorage | AWS S3 |
+|--|--|--|
+| Setup | Zero | ~10 min |
+| Limit | ~5-10 MB total | Unlimited |
+| Real cloud | ✗ | ✓ |
+| Survives browser clear | ✗ | ✓ |
+| For demo | ✓ Perfect | ✓ Better for marks |
+
+**Use localStorage for quick demo. Use AWS S3 for the actual submission.**
